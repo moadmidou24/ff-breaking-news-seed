@@ -235,11 +235,22 @@ def scrape_ff_breaking_news():
             best_headline = ""
             best_link = None
             search_scope = grand if grand else parent
+
+            # Debug: print all links and all text in scope
+            all_links_text = []
             for link in search_scope.select("a"):
                 text = link.get_text(strip=True)
+                all_links_text.append(text)
                 if text and len(text) > len(best_headline):
                     best_headline = text
                     best_link = link
+
+            # Also try getting text from non-link elements (title, span, etc.)
+            all_text = search_scope.get_text(strip=True)
+            print(f"  [DEBUG] Impact parent scope: {search_scope.name}, class={search_scope.get('class', [])}")
+            print(f"  [DEBUG] All links text: {all_links_text[:5]}")
+            print(f"  [DEBUG] Full text: {all_text[:150]}")
+            print(f"  [DEBUG] Parent HTML (200ch): {str(search_scope)[:300]}")
 
             if not best_headline or len(best_headline) < 5:
                 # Debug: show what we found
