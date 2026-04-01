@@ -224,24 +224,39 @@ def scrape_ff_breaking_news():
             "[class*='impact-high'], [class*='impact--red']"
         )
         for el in all_impacts:
-            # Walk up to find a parent container with a headline
+            # Walk up multiple levels to find the story container
             parent = el.find_parent(["tr", "div", "article", "li", "section"])
             if not parent:
                 continue
-            # Find headline text nearby
-            link = parent.select_one("a")
-            if not link:
+            # Try larger parent if first parent is too small
+            grand = parent.find_parent(["tr", "div", "article", "li", "section"])
+
+            # Collect all links and pick the one with the longest text (= headline)
+            best_headline = ""
+            best_link = None
+            search_scope = grand if grand else parent
+            for link in search_scope.select("a"):
+                text = link.get_text(strip=True)
+                if text and len(text) > len(best_headline):
+                    best_headline = text
+                    best_link = link
+
+            if not best_headline or len(best_headline) < 5:
+                # Debug: show what we found
+                print(f"  [DEBUG] Impact element found but no headline. Parent HTML: {str(parent)[:200]}")
                 continue
-            headline = link.get_text(strip=True)
-            if headline and len(headline) > 5:
-                # Avoid duplicates
-                if any(item["headline"] == headline[:MAX_HEADLINE_LEN] for item in items):
-                    continue
-                items.append({
-                    "timestamp": datetime.now(timezone.utc),
-                    "headline": headline[:MAX_HEADLINE_LEN],
-                    "impact": "high",
-                })
+
+            # Avoid duplicates
+            truncated = best_headline[:MAX_HEADLINE_LEN]
+            if any(item["headline"] == truncated for item in items):
+                continue
+
+            print(f"  [DEBUG] Found headline: {best_headline[:60]}")
+            items.append({
+                "timestamp": datetime.now(timezone.utc),
+                "headline": truncated,
+                "impact": "high",
+            })
 
     # ── Strategy 3: Debug — dump what we see ──
     if not items:
