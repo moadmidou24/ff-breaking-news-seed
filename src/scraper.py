@@ -165,11 +165,12 @@ def scrape_ff_breaking_news():
 
     for story in stories:
         # Check impact level — we want HIGH (red) only
+        # Actual FF HTML uses: <img class='svg-img svg-img--impact-ff-high'>
         impact_el = story.select_one(
+            "img[class*='impact-ff-high'], "
+            ".svg-img--impact-ff-high, "
             ".universal-impact__impact-high--ff, "
-            ".universal-impact__impact-high, "
             "[class*='impact-high'], "
-            "[class*='impact--high'], "
             "[class*='impact--red']"
         )
         if not impact_el:
@@ -179,7 +180,7 @@ def scrape_ff_breaking_news():
         title_el = story.select_one(
             ".news__title, .flexposts__title, .story__title, "
             ".news__story-title, a[class*='title'], "
-            "a[data-story-url], .title"
+            "a[data-story-url], .title, a"
         )
         if not title_el:
             # Try getting any link text
@@ -213,16 +214,18 @@ def scrape_ff_breaking_news():
             "impact": "high",
         })
 
-    # ── Strategy 2: Broader fallback — any element with red impact ──
+    # ── Strategy 2: Broader fallback — find impact-high images and walk up ──
     if not items:
         print("[INFO] Strategy 1 found nothing, trying broader search...")
         all_impacts = soup.select(
-            "[class*='impact-high'], [class*='impact--red'], "
-            ".universal-impact__impact-high--ff"
+            "img[class*='impact-ff-high'], "
+            ".svg-img--impact-ff-high, "
+            ".universal-impact__impact-high--ff, "
+            "[class*='impact-high'], [class*='impact--red']"
         )
         for el in all_impacts:
             # Walk up to find a parent container with a headline
-            parent = el.find_parent(["tr", "div", "article", "li"])
+            parent = el.find_parent(["tr", "div", "article", "li", "section"])
             if not parent:
                 continue
             # Find headline text nearby
@@ -231,6 +234,9 @@ def scrape_ff_breaking_news():
                 continue
             headline = link.get_text(strip=True)
             if headline and len(headline) > 5:
+                # Avoid duplicates
+                if any(item["headline"] == headline[:MAX_HEADLINE_LEN] for item in items):
+                    continue
                 items.append({
                     "timestamp": datetime.now(timezone.utc),
                     "headline": headline[:MAX_HEADLINE_LEN],
