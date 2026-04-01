@@ -223,48 +223,69 @@ def scrape_ff_breaking_news():
             ".universal-impact__impact-high--ff, "
             "[class*='impact-high'], [class*='impact--red']"
         )
+        seen_headlines = set()
         for el in all_impacts:
-            # Walk up multiple levels to find the story container
-            parent = el.find_parent(["tr", "div", "article", "li", "section"])
+            # Walk up to the story content container
+            parent = el.find_parent("div", class_=lambda c: c and "news-block" in " ".join(c) if isinstance(c, list) else c and "news-block" in c)
+            if not parent:
+                parent = el.find_parent(["div", "article", "li", "section"])
             if not parent:
                 continue
-            # Try larger parent if first parent is too small
-            grand = parent.find_parent(["tr", "div", "article", "li", "section"])
 
-            # Collect all links and pick the one with the longest text (= headline)
-            best_headline = ""
-            best_link = None
-            search_scope = grand if grand else parent
+            # The headline is plain text after the links, inside the details div
+            details = parent.select_one(".news-block__details, .darktext, [class*='details']")
+            if not details:
+                details = parent
 
-            # Debug: print all links and all text in scope
-            all_links_text = []
-            for link in search_scope.select("a"):
-                text = link.get_text(strip=True)
-                all_links_text.append(text)
-                if text and len(text) > len(best_headline):
-                    best_headline = text
-                    best_link = link
+            # Get the full text and strip out link text to isolate the headline
+            full_text = details.get_text(strip=False)
+            # Remove link texts from the full text
+            for link in details.select("a"):
+                link_text = link.get_text(strip=False)
+                full_text = full_text.replace(link_text, "", 1)
 
-            # Also try getting text from non-link elements (title, span, etc.)
-            all_text = search_scope.get_text(strip=True)
-            print(f"  [DEBUG] Impact parent scope: {search_scope.name}, class={search_scope.get('class', [])}")
-            print(f"  [DEBUG] All links text: {all_links_text[:5]}")
-            print(f"  [DEBUG] Full text: {all_text[:150]}")
-            print(f"  [DEBUG] Parent HTML (200ch): {str(search_scope)[:300]}")
+            # Clean up: remove pipes, timestamps, whitespace
+            headline = re.sub(r'\|[^|]*?\|', ' ', full_text)  # remove |time|comments|
+            headline = re.sub(r'\|', ' ', headline)
+            headline = re.sub(r'\s+', ' ', headline).strip()
 
-            if not best_headline or len(best_headline) < 5:
-                # Debug: show what we found
-                print(f"  [DEBUG] Impact element found but no headline. Parent HTML: {str(parent)[:200]}")
+            # Also try extracting from the <a> href slug as fallback
+            story_link = details.select_one("a.darklink, a[href*='/news/']")
+            slug_headline = ""
+            if story_link and story_link.get("href"):
+                href = story_link["href"]
+                # Extract slug: /news/1391546-trump-irans-new-regime-president...
+                slug_match = re.search(r'/news/\d+-(.+)', href)
+                if slug_match:
+                    slug_headline = slug_match.group(1).replace("-", " ").strip()
+
+            # Use the longer of the two (text content vs slug)
+            if len(slug_headline) > len(headline) or len(headline) < 10:
+                headline = slug_headline
+
+            if not headline or len(headline) < 5:
+                print(f"  [DEBUG] Skipping: no usable headline from: {full_text[:80]}")
                 continue
 
-            # Avoid duplicates
-            truncated = best_headline[:MAX_HEADLINE_LEN]
-            if any(item["headline"] == truncated for item in items):
+            truncated = headline[:MAX_HEADLINE_LEN]
+            if truncated in seen_headlines:
                 continue
+            seen_headlines.add(truncated)
 
-            print(f"  [DEBUG] Found headline: {best_headline[:60]}")
+            # Try to parse timestamp
+            time_match = re.search(r'(\d+)\s*(min|hr|hour|sec)\s*ago', details.get_text())
+            ts = datetime.now(timezone.utc)
+            if time_match:
+                val = int(time_match.group(1))
+                unit = time_match.group(2)
+                if 'min' in unit:
+                    ts -= timedelta(minutes=val)
+                elif 'hr' in unit or 'hour' in unit:
+                    ts -= timedelta(hours=val)
+
+            print(f"  [DEBUG] Found headline: {truncated}")
             items.append({
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": ts,
                 "headline": truncated,
                 "impact": "high",
             })
