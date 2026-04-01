@@ -225,6 +225,11 @@ def scrape_ff_breaking_news():
         )
         seen_headlines = set()
         for el in all_impacts:
+            # Skip legend items (inside .chart or .newslegend containers)
+            legend_parent = el.find_parent(class_=lambda c: c and any(x in " ".join(c) if isinstance(c, list) else x in c for x in ["chart", "newslegend", "legend"]))
+            if legend_parent:
+                continue
+
             # Walk up to the story content container
             parent = el.find_parent("div", class_=lambda c: c and "news-block" in " ".join(c) if isinstance(c, list) else c and "news-block" in c)
             if not parent:
@@ -244,8 +249,9 @@ def scrape_ff_breaking_news():
                 link_text = link.get_text(strip=False)
                 full_text = full_text.replace(link_text, "", 1)
 
-            # Clean up: remove pipes, timestamps, whitespace
-            headline = re.sub(r'\|[^|]*?\|', ' ', full_text)  # remove |time|comments|
+            # Clean up: remove pipes, timestamps, "X comments", whitespace
+            headline = re.sub(r'\|\s*\d+\s*(min|hr|hour|sec)\s*ago\s*\|', ' ', full_text)
+            headline = re.sub(r'\|\s*\d+\s*comments?\s*', ' ', headline)
             headline = re.sub(r'\|', ' ', headline)
             headline = re.sub(r'\s+', ' ', headline).strip()
 
@@ -254,13 +260,12 @@ def scrape_ff_breaking_news():
             slug_headline = ""
             if story_link and story_link.get("href"):
                 href = story_link["href"]
-                # Extract slug: /news/1391546-trump-irans-new-regime-president...
                 slug_match = re.search(r'/news/\d+-(.+)', href)
                 if slug_match:
                     slug_headline = slug_match.group(1).replace("-", " ").strip()
 
-            # Use the longer of the two (text content vs slug)
-            if len(slug_headline) > len(headline) or len(headline) < 10:
+            # Prefer plain text if substantial, otherwise fall back to slug
+            if len(headline) < 10 and len(slug_headline) > len(headline):
                 headline = slug_headline
 
             if not headline or len(headline) < 5:
