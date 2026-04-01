@@ -1,0 +1,12 @@
+{
+  "description": "ForexFactory Breaking News (red folder) — encoded headlines",
+  "currency": "USD",
+  "base_currency": "USD",
+  "exchange": "CUSTOM",
+  "type": "index",
+  "session": "24x7",
+  "timezone": "America/New_York",
+  "pricescale": 1,
+  "has_intraday": true,
+  "supported_resolutions": ["1", "5", "15", "30", "60", "240", "1D"]
+}
